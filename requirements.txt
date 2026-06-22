@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-multipart
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+chromadb>=0.5,<0.6
+unstructured[pdf]
+pydantic
+python-dotenv
+ftfy
+yake
+sumy
+nltk

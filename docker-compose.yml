@@ -1,0 +1,134 @@
+services:
+  # ---------------------------------------------------------------------------
+  # LLM local (Ollama) com suporte a GPU NVIDIA
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=10m
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Serviço one-shot: baixa os modelos necessários assim que o Ollama sobe.
+  # OLLAMA_HOST no formato http://host:port é exigido pelo CLI do Ollama.
+  # Como não monta volume de modelos, força o pull para o container `ollama`
+  # (que persiste em ollama_models). Roda uma única vez (restart: "no").
+  # ---------------------------------------------------------------------------
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: rag-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Baixando llama3.2:3b...";
+        ollama pull llama3.2:3b;
+        echo "Baixando nomic-embed-text...";
+        ollama pull nomic-embed-text;
+        echo "Modelos prontos.";
+    networks:
+      - rag-net
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Banco vetorial (Chroma) como serviço dedicado e persistente
+  # Exposto em 8001 no host para evitar conflito com o backend (8000).
+  # Internamente o backend acessa em chroma:8000 (rede rag-net).
+  # ---------------------------------------------------------------------------
+  chroma:
+    image: chromadb/chroma:0.5.23
+    container_name: rag-chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat'); sys.exit(0)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Backend (FastAPI) — pipeline de ingestão, agentes e busca RAG
+  # env_file injeta ADMIN_USERNAME e ADMIN_PASSWORD do .env.
+  # As demais vars de infra ficam inline para ficarem explícitas no compose.
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: rag-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      chroma:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    networks:
+      - rag-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend (Next.js) — build multi-stage; browser acessa backend em
+  # localhost:8000 (porta publicada no host), então nenhuma env var extra.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./front-end-novo
+      dockerfile: Dockerfile
+    container_name: rag-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - rag-net
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  chroma_data:
+  uploads_data:
+
+networks:
+  rag-net:
+    driver: bridge

@@ -1,4 +1,5 @@
 import uuid
+
 from backend.models.models import Document, Chunk, ProcessingStatus
 from backend.ingestion.parser import PDFParser
 
@@ -23,12 +24,11 @@ class IngestionOrchestrator:
         self.agent_pipeline = agent_pipeline
 
     def _build_document(self, file_path: str) -> Document:
-        """
-        Cria um objeto Document a partir do caminho do arquivo.
-        """
-        import fitz
-        with fitz.open(file_path) as pdf:
-            total_pages = pdf.page_count
+        from unstructured.partition.auto import partition
+
+        elements = partition(filename=file_path)
+        pages = {el.metadata.page_number for el in elements if el.metadata.page_number}
+        total_pages = len(pages) if pages else 1
 
         return Document(
             id=str(uuid.uuid4()),
@@ -52,7 +52,7 @@ class IngestionOrchestrator:
 
             processed_chunks = []
             for chunk in chunks:
-                result = self.agent_pipeline.run(chunk)
+                result = self.agent_pipeline(chunk)
                 processed_chunks.append(result)
 
             document.status = ProcessingStatus.DONE
@@ -76,6 +76,7 @@ class IngestionOrchestrator:
             "total_files_processed": 0,
             "total_chunks_generated": 0,
             "documents": [],
+            "document_objects": [],
         }
 
         for file_path in batch:
@@ -91,5 +92,6 @@ class IngestionOrchestrator:
                 "status": document.status,
                 "chunks_generated": len(chunks),
             })
+            report["document_objects"].append(document)
 
         return report

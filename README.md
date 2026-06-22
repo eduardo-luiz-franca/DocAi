@@ -4,92 +4,149 @@ Sistema de análise e pesquisa documental inteligente com pipeline de agentes La
 
 ---
 
-## Tecnologias Utilizadas
+## Tecnologias
 
 | Tecnologia | Função |
 |---|---|
-| **FastAPI** | Framework web para a API do backend |
-| **LangChain** | Orquestração dos agentes e pipeline de processamento |
-| **Ollama** | LLM local (modelo llama3) para processamento de texto |
-| **ChromaDB** | Banco de dados vetorial para busca semântica |
-| **Unstructured** | Extração de texto de PDFs (digitais e escaneados) |
-| **Pydantic** | Validação e tipagem dos dados |
-| **Next.js** | Framework do frontend |
+| **FastAPI** | API do backend |
+| **LangChain** | Orquestração do pipeline de agentes |
+| **Ollama** | LLM local (`llama3.2:3b`) com suporte a GPU NVIDIA |
+| **ChromaDB** | Banco vetorial persistente (serviço dedicado) |
+| **Unstructured** | OCR e extração de texto de PDFs digitais e escaneados |
+| **ftfy** | Correção de encoding e artefatos de OCR (CleanerAgent) |
+| **YAKE** | Extração de keywords sem LLM (ContextAgent + QueryOptimizer) |
+| **Sumy / LSA** | Sumarização extrativa em português (ContextAgent) |
+| **Pydantic** | Validação de saídas estruturadas dos agentes |
+| **Next.js 16** | Frontend |
+| **Docker Compose** | Orquestração dos serviços com suporte a GPU NVIDIA |
+
+---
+
+## Como rodar
+
+### Pré-requisitos
+- Docker Desktop instalado e rodando
+- (Opcional) NVIDIA GPU + `nvidia-container-toolkit` para aceleração
+
+### 1. Configure as credenciais
+
+```bash
+cp .env.example .env
+```
+
+Edite o `.env` com seu usuário e senha:
+
+```env
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=sua_senha
+```
+
+### 2. Suba os serviços
+
+```bash
+docker compose up --build
+```
+
+Na primeira execução os modelos `llama3.2:3b` (~2 GB) e `nomic-embed-text` (~270 MB) são baixados automaticamente. Nas execuções seguintes o cache é reaproveitado.
+
+### 3. Acesse
+
+| Serviço | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:8000 |
+| ChromaDB | http://localhost:8001 |
+| Ollama | http://localhost:11434 |
 
 ---
 
 ## Estrutura de Pastas
 
 ```
-project/
+desafioAcellerai/
 ├── backend/
 │   ├── agents/
-│   │   ├── base_agent.py        # Classe base para todos os agentes
-│   │   ├── cleaner_agent.py     # Agente de limpeza do texto OCR
-│   │   ├── context_agent.py     # Agente de extração de metadados
-│   │   └── indexer_agent.py     # Agente de geração de embedding e indexação
+│   │   ├── base_agent.py        # Classe base com log() e run() abstrato
+│   │   ├── cleaner_agent.py     # Agente 1: ftfy + regex (sem LLM)
+│   │   ├── context_agent.py     # Agente 2: YAKE + Sumy LSA + Pydantic (sem LLM)
+│   │   └── indexer_agent.py     # Agente 3: OllamaEmbeddings → ChromaDB
 │   ├── ingestion/
-│   │   ├── parser.py            # Extração de texto dos PDFs via Unstructured
-│   │   └── orchestrator.py      # Controle de lote e coordenação do pipeline
+│   │   ├── parser.py            # OCR via Unstructured + RecursiveCharacterTextSplitter
+│   │   └── orchestrator.py      # Controle de batch_size e loop de documentos
 │   ├── models/
-│   │   └── models.py            # Modelos Pydantic de dados
+│   │   └── models.py            # Schemas Pydantic do sistema
 │   ├── retrieval/
-│   │   ├── query_optimizer.py   # Otimização da query do usuário
-│   │   └── search_engine.py     # Motor de busca e geração de resposta
+│   │   ├── query_optimizer.py   # Pre-retrieval: Routing, Rewriting, Expansion, Filtering
+│   │   └── search_engine.py     # Busca vetorial + geração de resposta + RetrievalLog
 │   ├── vectorstore/
-│   │   └── store.py             # Abstração do ChromaDB
-│   ├── llm.py                   # Wrapper do Ollama
-│   └── main.py                  # Entry point da API FastAPI
-└── frontend/
-    ├── app/
-    │   ├── page.tsx             # Tela de login
-    │   └── dashboard/
-    │       └── page.tsx         # Tela de dashboard
-    └── components/              # Componentes reutilizáveis
+│   │   └── store.py             # ChromaDB HttpClient (serviço externo)
+│   ├── document_store.py        # Store in-memory de documentos processados
+│   ├── llm.py                   # Wrapper OllamaLLM (lê OLLAMA_BASE_URL do ambiente)
+│   ├── main.py                  # Entrypoint FastAPI: rotas, CORS, instâncias
+│   └── Dockerfile
+├── front-end-novo/
+│   ├── app/
+│   │   ├── page.tsx             # Rota raiz → Login
+│   │   └── dashboard/page.tsx   # Dashboard principal
+│   ├── components/
+│   │   ├── login-form.tsx       # POST /auth/login
+│   │   ├── dashboard-header.tsx
+│   │   ├── stats-cards.tsx      # Total docs, chunks, status do pipeline
+│   │   ├── documents-panel.tsx  # Tabela paginada + upload + batch size
+│   │   └── chat-panel.tsx       # Chat RAG + painel Chain of Thought
+│   ├── components/ui/           # Button, Input, Label
+│   ├── lib/
+│   │   ├── api.ts               # API_URL (NEXT_PUBLIC_API_URL)
+│   │   ├── utils.ts             # cn() — merge de classes Tailwind
+│   │   └── docai-data.ts        # Tipos TypeScript compartilhados
+│   └── Dockerfile               # Build multi-stage Node 20 Alpine
+├── uploads/                     # PDFs recebidos pelo backend
+├── docker-compose.yml
+├── requirements.txt
+├── .env                         # Credenciais reais (não commitado)
+└── .env.example                 # Template com todas as variáveis
 ```
 
 ---
 
-## Modelos de Dados
-
-- **Document** — representa o PDF original ingerido no sistema
-- **Chunk** — unidade de texto que percorre o pipeline de agentes
-- **ChunkMetadata** — metadados extraídos de cada chunk (tema, resumo, flags booleanas)
-- **SearchQuery** — pergunta do usuário com filtros opcionais
-- **RetrievalLog** — log do raciocínio do sistema (Chain of Thought)
-- **SearchResult** — resposta final com chunks fonte e log CoT
-
----
-
-## Pipeline de Agentes
-
-Todos os agentes herdam de `BaseAgent` e seguem a mesma interface: `run(chunk) -> chunk`.
+## Pipeline de Ingestão
 
 ```
-CleanerAgent → ContextAgent → IndexerAgent
+Upload de PDFs (POST /ingest?batch_size=N)
+    │
+    ├─ IngestionOrchestrator  →  respeita batch_size
+    │
+    ├─ PDFParser
+    │   ├─ Unstructured (OCR + extração de texto)
+    │   └─ RecursiveCharacterTextSplitter  →  list[Chunk]
+    │
+    └─ Para cada Chunk:
+        ├─ CleanerAgent   →  ftfy + regex  →  chunk.clean_text
+        ├─ ContextAgent   →  YAKE + Sumy LSA + Pydantic  →  chunk.metadata
+        └─ IndexerAgent   →  OllamaEmbeddings  →  ChromaDB.add()
 ```
 
-1. **CleanerAgent** — corrige caracteres quebrados e formatação do OCR
-2. **ContextAgent** — extrai tema, resumo e metadados estruturados do chunk
-3. **IndexerAgent** — gera embedding via Ollama e persiste no ChromaDB
+## Pipeline de Busca (Chat RAG)
 
----
-
-## Fluxos do Sistema
-
-### Indexação
 ```
-Upload de PDFs → PDFParser (OCR) → Chunking → Agentes → ChromaDB
-```
-
-### Chat
-```
-Pergunta → QueryOptimizer → ChromaDB.search() → Ollama LLM → Resposta + Log CoT
-```
-
-### Autenticação
-```
-Login → Validação via .env → Acesso ao Dashboard
+Pergunta (POST /search)
+    │
+    ├─ QueryOptimizer
+    │   ├─ route()            →  Semantic Routing: simples | complexa | factual (heurística)
+    │   ├─ rewrite_query()    →  Query Rewriting via LLM
+    │   ├─ expand_query()     →  Query Expansion via YAKE (sem LLM)
+    │   └─ metadata_filter()  →  Metadata Pre-filtering
+    │
+    ├─ VectorStore.search()
+    │   ├─ OllamaEmbeddings.embed_query()
+    │   └─ ChromaDB.query(query_embeddings)  →  list[{id, text, score}]
+    │
+    ├─ OllamaLLM.invoke(prompt + contexto)
+    │
+    └─ SearchResult
+        ├─ answer          →  resposta do LLM (máx. 3 parágrafos)
+        ├─ source_chunks   →  chunks recuperados
+        └─ retrieval_log   →  técnica aplicada + raciocínio (Chain of Thought)
 ```
 
 ---
@@ -99,21 +156,47 @@ Login → Validação via .env → Acesso ao Dashboard
 | Método | Rota | Descrição |
 |---|---|---|
 | GET | `/` | Health check |
-| POST | `/ingest` | Ingestão de PDFs |
-| POST | `/search` | Busca semântica e chat |
+| POST | `/auth/login` | Autenticação via credenciais do `.env` |
+| POST | `/ingest` | Ingestão de PDFs (`?batch_size=N`) |
+| POST | `/search` | Busca semântica e resposta do LLM |
+| GET | `/documents` | Lista documentos processados |
 
 ---
 
-## Decisões Técnicas
+## Variáveis de Ambiente
 
-**Por que Unstructured para OCR?**
-Combina múltiplas estratégias automaticamente — PyMuPDF para PDFs digitais e Tesseract para PDFs escaneados — com pré-processamento de imagem para documentos de baixa qualidade.
+| Variável | Padrão (Docker) | Descrição |
+|---|---|---|
+| `ADMIN_USERNAME` | — | Usuário de acesso à plataforma |
+| `ADMIN_PASSWORD` | — | Senha de acesso à plataforma |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` | Endpoint do Ollama |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Modelo LLM para geração de resposta |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Modelo de embeddings |
+| `OLLAMA_KEEP_ALIVE` | `10m` | Tempo que o modelo fica na VRAM após última requisição |
+| `CHROMA_HOST` | `chroma` | Host do ChromaDB |
+| `CHROMA_PORT` | `8000` | Porta do ChromaDB |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | URL da API consumida pelo browser |
 
-**Por que ChromaDB?**
-Suporte nativo a filtros por metadados, persistência em disco automática e integração plug-and-play com LangChain. Ideal para o escopo do projeto.
+---
 
-**Por que Ollama?**
-Permite rodar LLMs localmente sem depender de APIs externas, com suporte a GPU via Docker.
+## Serviços Docker
 
-**Por que Pydantic?**
-Garante tipagem estrita nas saídas dos agentes — números como inteiros puros e booleanos sem texto adicional, conforme exigido pelo desafio.
+| Container | Imagem | Porta | Descrição |
+|---|---|---|---|
+| `rag-ollama` | `ollama/ollama:latest` | 11434 | LLM local com GPU |
+| `rag-ollama-pull` | `ollama/ollama:latest` | — | One-shot: baixa os modelos na primeira execução |
+| `rag-chroma` | `chromadb/chroma:0.5.23` | 8001 | Banco vetorial persistente |
+| `rag-backend` | build local | 8000 | API FastAPI |
+| `rag-frontend` | build local | 3000 | Interface Next.js |
+
+Ordem de subida: `ollama` healthy → `ollama-pull` completa → `chroma` healthy → `backend` → `frontend`.
+
+---
+
+## Atualizar sem rebuild
+
+| Mudança | Comando |
+|---|---|
+| Código Python (sem nova dependência) | `docker compose restart backend` |
+| Frontend (CSS, componentes) | `docker compose up --build frontend` |
+| Nova dependência ou Dockerfile | `docker compose up --build` |

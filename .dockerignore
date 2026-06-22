@@ -1,0 +1,12 @@
+.git
+.gitignore
+.gitgnore
+**/__pycache__/
+**/*.pyc
+.env
+front-end
+front-end-novo
+uploads
+*.md
+.venv
+venv

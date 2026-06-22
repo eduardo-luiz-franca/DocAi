@@ -1,6 +1,6 @@
 from unstructured.partition.auto import partition
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from backend.models.models import Chunk, Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import uuid
 
