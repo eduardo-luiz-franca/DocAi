@@ -11,7 +11,7 @@ class ProcessingStatus(str, Enum):
     ERROR = "error"
 
 
-class Document(BaseModel):
+class Document(BaseModel): #Um arquivo PDF enviado — metadados: id, nome, caminho, páginas, status
     id: str
     filename: str
     file_path: str
@@ -21,7 +21,7 @@ class Document(BaseModel):
     chunks_generated: int = 0
 
 
-class ChunkMetadata(BaseModel):
+class ChunkMetadata(BaseModel): #Metadados extraídos do chunk pelo ContextAgent — tópico, resumo, flags (números/tabelas)
     document_id: str
     page_number: int          # inteiro puro — regra de extração numérica
     topic: str
@@ -31,7 +31,7 @@ class ChunkMetadata(BaseModel):
     language: str = "pt"
 
 
-class Chunk(BaseModel):
+class Chunk(BaseModel): # Um pedaço de texto do PDF — contém raw_text, clean_text (após CleanerAgent), metadata, embedding
     id: str
     document_id: str
     raw_text: str
@@ -40,7 +40,7 @@ class Chunk(BaseModel):
     embedding: Optional[list[float]] = None
 
 
-class SearchQuery(BaseModel):
+class SearchQuery(BaseModel):  # Pergunta do usuário + filtros opcionais (idioma, tabelas, documento específico)
     query: str
     top_k: int = 5
     filter_language: Optional[str] = None
@@ -48,7 +48,7 @@ class SearchQuery(BaseModel):
     filter_document_id: Optional[str] = None
 
 
-class RetrievalLog(BaseModel):
+class RetrievalLog(BaseModel): #Raciocínio da busca — query original, reescrita, técnica aplicada, reasoning (Chain of Thought)
     original_query: str
     rewritten_query: Optional[str] = None
     technique_applied: str
@@ -56,7 +56,7 @@ class RetrievalLog(BaseModel):
     chunks_retrieved: int
 
 
-class SearchResult(BaseModel):
+class SearchResult(BaseModel): #Resposta final ao usuário — answer (texto), source_chunks (chunks recuperados), retrieval_log
     answer: str
     # Cada item: {"id": str, "text": str, "score": float}
     source_chunks: list[dict[str, Any]]

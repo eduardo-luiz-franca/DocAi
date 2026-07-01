@@ -1,0 +1,18 @@
+historico e persistência:
+
+salvar conversa no SQLlite
+
+id (UUID)
+conversation_id (referência)
+role ("user" ou "assistant")
+content (texto da pergunta ou resposta)
+created_at (data/hora)
+
+apenas para persistência
+
+-perguntar a alan se a questão da persistência serve tbm para guardar coxtexto das conversas
+
+criação de diferentes chats (novo chat, excluir chat)
+
+
+interação sem contexto(agente responde oi, boa tarde, explica para que ele serve)

@@ -1,16 +1,47 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Send, Sparkles, ChevronDown, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { type ChatMessage } from "@/lib/docai-data"
 import { API_URL } from "@/lib/api"
 
-export function ChatPanel() {
+interface ChatPanelProps {
+  conversationId: string
+}
+
+export function ChatPanel({ conversationId }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  useEffect(() => {
+    if (conversationId) {
+      setLoadingHistory(true)
+      setMessages([])
+
+      fetch(`${API_URL}/conversations/${conversationId}/messages`)
+        .then(r => {
+          if (!r.ok) throw new Error("Erro ao carregar histórico")
+          return r.json()
+        })
+        .then(data => {
+          const chatMessages: ChatMessage[] = (data.messages || []).map((msg: any) => ({
+            id: `${msg.role}-${Date.now()}`,
+            role: msg.role as "user" | "assistant",
+            content: msg.content,
+          }))
+          setMessages(chatMessages)
+        })
+        .catch(err => {
+          console.error("Erro ao carregar histórico:", err)
+          setMessages([])
+        })
+        .finally(() => setLoadingHistory(false))
+    }
+  }, [conversationId])
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
@@ -31,7 +62,7 @@ export function ChatPanel() {
       const response = await fetch(`${API_URL}/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: text }),
+        body: JSON.stringify({ query: text, conversation_id: conversationId }),
       })
       const data = await response.json()
 
@@ -73,7 +104,12 @@ export function ChatPanel() {
 
       {/* Messages */}
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && (
+        {loadingHistory && (
+          <p className="text-center text-xs text-muted-foreground">
+            Carregando histórico do chat...
+          </p>
+        )}
+        {!loadingHistory && messages.length === 0 && (
           <p className="text-center text-xs text-muted-foreground">
             Faça uma pergunta sobre os documentos indexados.
           </p>

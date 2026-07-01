@@ -7,10 +7,41 @@ class SearchEngine:
         self.optimizer = optmizer
         self.vector_store = vectorStore
 
-    def search(self, query: str) -> SearchResult:
-        optimized = self.optimizer.optimize(query)
+    def search(self, query: str, conversation_history = None) -> SearchResult:
+        history_text = ""
+        if conversation_history:
+            for msg in conversation_history:
+                role = "você" if msg['role'] == 'assistant' else "User"
+                history_text+= f"{role}: {msg['content']}\n"
+        is_document_related = self.optimizer.is_document_related(query)
+        if not is_document_related:
+            prompt = f"""Você é um assistente especializado em análise de documentos. Você pode:
+- Responder perguntas sobre arquivos PDF que o usuário anexou.
+- Extrair informações e dados dos documentos
+- Buscar informações específicas em seus arquivos
+- Conversar normalmente sobre outros assuntos
 
-        # results: list[{"id", "text", "score"}]
+Responda em português brasileiro, breve e natural (máximo 2 ou 3 frases).
+
+Histórico da conversa:
+{history_text}
+
+Pergunta: {query}
+
+Resposta:"""
+
+            answer = self.llm.invoke(prompt)
+            log = RetrievalLog(
+                original_query=query,
+                rewritten_query=query,
+                technique_applied="Conversação Geral (sem busca documental)",
+                reasoning="Pergunta não está relacionada a documentos indexados.",
+                chunks_retrieved=0,
+            )
+            return SearchResult(answer=answer, source_chunks=[], retrieval_log=log)
+
+        optimized = self.optimizer.optimize(query, conversation_history=conversation_history)
+
         results = self.vector_store.search(
             optimized["rewritten"],
             filters=optimized["filters"] if optimized["filters"] else None,
@@ -21,7 +52,10 @@ class SearchEngine:
             for i, r in enumerate(results)
         )
 
-        prompt = f"""Você é um assistente de análise documental. Responda à pergunta usando APENAS as informações dos trechos abaixo.
+        prompt = f"""Você é um assistente de análise de documentos. Responda em português brasileiro, breve e natural (máximo 2 ou 3 frases).
+
+Histórico da conversa:
+{history_text}
 
 Regras:
 - Seja direto e objetivo.
@@ -35,6 +69,7 @@ Trechos do documento:
 {context}
 
 Resposta:"""
+
 
         answer = self.llm.invoke(prompt)
 

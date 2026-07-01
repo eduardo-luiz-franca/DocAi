@@ -16,6 +16,11 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from backend.document_store import DocumentStore
 
+import uuid
+from backend.database import init_db, create_conversation, save_message, get_conversation_messages, get_all_conversations, delete_conversation
+
+init_db()  # Cria as tabelas na primeira execução
+
 document_store = DocumentStore()
 
 
@@ -100,10 +105,38 @@ def ingest(files: List[UploadFile], batch_size: int = 10):
     return report
 
 # Rota de busca — recebe a pergunta e retorna resposta + log CoT
+class SearchRequest(BaseModel):
+    query: str
+    conversation_id: str
+
 @app.post("/search")
-def search(query: SearchQuery):
-    result = search_engine.search(query.query)
+def search(request: SearchRequest):
+    # 0. Carrega histórico anterior
+    history = get_conversation_messages(request.conversation_id)
+    history.append({"role": "user", "content": request.query})
+    
+    # 1. Salva a pergunta do usuário
+    save_message(
+        conversation_id=request.conversation_id,
+        role="user",
+        content=request.query
+    )
+    
+    # 2. Busca e gera resposta (COM histórico)
+    result = search_engine.search(request.query, conversation_history=history)
+    
+    # 3. Salva a resposta do assistente
+    save_message(
+        conversation_id=request.conversation_id,
+        role="assistant",
+        content=result.answer
+    )
+    
     return result
+
+    
+    return result
+
 
 @app.get("/documents")
 def list_documents():
@@ -112,3 +145,31 @@ def list_documents():
         "total_documents": document_store.total_documents(),
         "total_chunks": document_store.total_chunks(),
     }
+
+@app.get("/conversations")
+def list_conversations():
+    """Lista todas as conversas."""
+    conversations = get_all_conversations()
+    return conversations
+
+
+@app.post("/conversations")
+def new_conversation():
+    """Cria uma nova conversa."""
+    conversation_id = str(uuid.uuid4())
+    create_conversation(conversation_id)
+    return {"conversation_id": conversation_id}
+
+
+@app.get("/conversations/{conversation_id}/messages")
+def get_messages(conversation_id: str):
+    """Carrega histórico de uma conversa."""
+    messages = get_conversation_messages(conversation_id)
+    return {"messages": messages}
+
+
+@app.delete("/conversations/{conversation_id}")
+def delete_conv(conversation_id: str):
+    """Deleta uma conversa."""
+    delete_conversation(conversation_id)
+    return {"status": "deleted"}

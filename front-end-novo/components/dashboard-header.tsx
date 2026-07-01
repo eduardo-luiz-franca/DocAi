@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 
 export function DashboardHeader() {
   return (
-    <header className="flex items-center justify-between border-b border-border pb-5">
+    <header className="flex items-center gap-3 border-b border-border pb-5">
       <div className="flex items-center gap-3">
         <div className="flex size-9 items-center justify-center rounded-md bg-brand/15 text-brand">
           <svg
@@ -27,11 +27,6 @@ export function DashboardHeader() {
           <p className="mt-1 text-xs text-muted-foreground">Pipeline de documentos & RAG</p>
         </div>
       </div>
-
-      <Button variant="outline" size="sm" className="gap-2">
-        <LogOut className="size-4" />
-        Sair
-      </Button>
     </header>
   )
 }
